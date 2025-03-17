@@ -2,6 +2,8 @@
 
 **用pytorch从零实现的视觉大模型**
 
+The README is also my notes for the video, so it's in Chinese.
+
 [视频链接](https://www.bilibili.com/video/BV14pH9eVEp6/?spm_id_from=333.1007.top_right_bar_window_default_collection.content.click)
 
 [原作者github仓库](https://github.com/hkproj/pytorch-paligemma)
@@ -145,5 +147,3 @@ $$
 - 一个embeding的不同维度（即pos固定，i变化）可以关注不同的信息：
   - i较小时，sin和cos函数的周期小，频率高，捕捉局部依赖
   - i较大时，sin和cos函数的周期大，频率低，捕捉长程依赖（即要隔好几个pos才回到同一函数值，内积才会相近）
-
-还剩没看的：怎么具体应用kv-cache到attention计算中
