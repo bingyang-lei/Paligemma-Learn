@@ -2,8 +2,8 @@ from PIL import Image
 import torch
 import fire
 
-from processing_paligemma import PaliGemmaProcessor
-from modeling_gemma import KVCache, PaliGemmaForConditionalGeneration
+from my_processing import PaliGemmaProcessor
+from my_gemma import KVCache, PaliGemmaForConditionalGeneration
 from utils import load_hf_model
 
 

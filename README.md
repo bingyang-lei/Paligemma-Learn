@@ -27,7 +27,7 @@ The README is also my notes for the video, so it's in Chinese.
 
 ### 对比学习：
 
-clip视觉大模型采用了这种技术，其实就是如下图：
+clip视觉大模型在训练vision encoder时采用了这种技术，其实就是如下图：
 
 <img src="./paligemma/image-20250310214301113.png" alt="image-20250310214301113" style="zoom: 80%;" />
 
@@ -40,6 +40,16 @@ clip视觉大模型采用了这种技术，其实就是如下图：
 为什么非要对比学习，而不是直接让视觉transformer直接学习图片的表示？因为视觉多模态模型里，视觉transformer和语言transformer的编码最后是要拼在一起的，我们希望对图片和文本的编码尽可能对齐，而对比学习起到了对齐的效果，同时这种对比学习无监督，而且训练数据好获得。
 
 ### 对比：两种正则化
+
+为什么要正则化：
+
+**核心问题：内部协变量偏移（Internal Covariate Shift）**
+
+- **现象**：深度网络中，每一层的输入分布会随着前一层参数更新而动态变化（尤其是低层网络的变化会逐层放大）。
+- **后果**：
+  - 后续层需要不断适应新的输入分布，导致训练效率降低。
+  - 梯度更新方向不稳定，需使用更小的学习率，延长训练时间。
+  - 对参数初始化敏感，容易陷入局部最优或梯度消失/爆炸。
 
 **Batch Normalization**和**Layer Normalization**
 
@@ -86,11 +96,53 @@ $$
 
 - 将KV向量保存下来便于后续计算，这样每次生成后，下次输入模型的也只是最后一个token
 
+- 注意KV-cache是存储KV，实际节省输入的点在于Q。
+
 分两步：预填充和token生成
 
 过程见下图图示：
 
 ![image-20250317120354085](./paligemma/image-20250317120354085.png)
+
+```python
+class KVCache():
+
+    def __init__(self) -> None:
+        # self.key_cache最后会是一个[layer_num, Batch_Size, Num_Heads_KV, Seq_Len, Head_Dim]的数组
+        self.key_cache: List[torch.Tensor] = []
+        self.value_cache: List[torch.Tensor] = []
+    
+    def num_items(self) -> int:
+        if len(self.key_cache) == 0:
+            return 0
+        else:
+            # The shape of the key_cache[0] is [Batch_Size, Num_Heads_KV, Seq_Len, Head_Dim]
+            # 0代表了层数
+            return self.key_cache[0].shape[-2]
+
+    def update(
+        self,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        layer_idx: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if len(self.key_cache) <= layer_idx:
+            # If we never added anything to the KV-Cache of this layer, let's create it.
+            self.key_cache.append(key_states)
+            self.value_cache.append(value_states)
+        else:
+            # ... otherwise we concatenate the new keys with the existing ones.
+            # each tensor has shape: [Batch_Size, Num_Heads_KV, Seq_Len, Head_Dim]
+            self.key_cache[layer_idx] = torch.cat([self.key_cache[layer_idx], key_states], dim=-2)
+            self.value_cache[layer_idx] = torch.cat([self.value_cache[layer_idx], value_states], dim=-2)
+
+        # ... and then we return all the existing keys + the new ones.
+        return self.key_cache[layer_idx], self.value_cache[layer_idx]
+```
+
+
+
+
 
 ### RMS norm
 
@@ -98,6 +150,12 @@ $$
 $$
 \text{RMS}(a) = \sqrt (\frac{1}{n}\sum_{i=1}^{n}a_i^2)
 $$
+
+$$
+\hat{x} = \frac{x}{\text{RMS}(x)} * \gamma
+$$
+
+这样会使**整体计算更高效，模型的训练会更快**
 
 ### 分组查询注意力
 
